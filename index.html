@@ -225,6 +225,20 @@
   .loop-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
   .row-actions { display: flex; gap: 4px; justify-content: flex-end; }
   .edit-row td { background: var(--green-soft); }
+  .draft-row td { opacity: 0.65; }
+  .draft-badge {
+    font-size: 10px;
+    color: var(--text3);
+    background: var(--bg2);
+    padding: 2px 8px;
+    border-radius: 999px;
+    margin-left: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-weight: 500;
+    border: 1px solid var(--border);
+  }
+  .dash { color: var(--text3); }
 
   /* Add form */
   .add-form {
@@ -404,8 +418,15 @@ function toggleEditMode() {
   persist();
 }
 
+// A loop is a "draft" if it has a name but missing throughput/velocity/return.
+// Drafts show "—" for all derived numbers and don't contribute to totals/charts.
+function isDraft(l) { return !l.T || !l.D || !l.R; }
+
 // Math: throughput × return per cycle, repeating every D days.
 function calc(l) {
+  if (isDraft(l)) {
+    return { cyclesPerYear: null, profitPerCycle: null, monthlyProfit: null, annualProfit: null, annualROI: null };
+  }
   const cy = 365 / l.D;
   const profitPerCycle = l.T * (l.R / 100);
   const annualProfit = profitPerCycle * cy;
@@ -419,9 +440,9 @@ function calc(l) {
 }
 
 function colorFor(l) { return COLORS[loops.findIndex(x => x.id === l.id) % COLORS.length]; }
-function fmt$(n) { return '$' + Math.round(n).toLocaleString(); }
-function fmtR(n) { return n.toFixed(1) + '%'; }
-function fmtC(n) { return n.toFixed(1) + '×'; }
+function fmt$(n) { return n == null ? '<span class="dash">—</span>' : '$' + Math.round(n).toLocaleString(); }
+function fmtR(n) { return n == null ? '<span class="dash">—</span>' : n.toFixed(1) + '%'; }
+function fmtC(n) { return n == null ? '<span class="dash">—</span>' : n.toFixed(1) + '×'; }
 
 async function load() {
   try { loops = JSON.parse(localStorage.getItem(CACHE_KEY)) || []; } catch(e) { loops = []; }
@@ -491,12 +512,13 @@ function clearForm() {
 function showErr(msg) { const e = document.getElementById('formErr'); e.textContent = msg; e.style.display = 'block'; }
 
 function saveLoop() {
-  const name = document.getElementById('fName').value.trim() || ('Loop ' + (loops.length + 1));
-  const T = parseFloat(document.getElementById('fT').value);
-  const D = parseFloat(document.getElementById('fD').value);
-  const R = parseFloat(document.getElementById('fR').value);
-  if (!T || !D || !R) { showErr('Fill all numeric fields.'); return; }
-  if (D <= 0) { showErr('Velocity must be greater than 0.'); return; }
+  const name = document.getElementById('fName').value.trim();
+  if (!name) { showErr('Name is required.'); return; }
+  const T = parseFloat(document.getElementById('fT').value) || 0;
+  const D = parseFloat(document.getElementById('fD').value) || 0;
+  const R = parseFloat(document.getElementById('fR').value) || 0;
+  if (D < 0 || T < 0 || R < 0) { showErr('Values cannot be negative.'); return; }
+  // T/D/R may all be 0 — that's a "draft" loop (placeholder, fill in later).
   loops.push({ id: Date.now(), name, T, D, R });
   persist(); cancelForm(); render();
 }
@@ -506,10 +528,10 @@ function cancelEdit() { editingId = null; renderLoops(); }
 function saveEdit(id) {
   const l = loops.find(x => x.id === id); if (!l) return;
   const name = document.getElementById('eN_' + id).value.trim() || l.name;
-  const T = parseFloat(document.getElementById('eT_' + id).value);
-  const D = parseFloat(document.getElementById('eD_' + id).value);
-  const R = parseFloat(document.getElementById('eR_' + id).value);
-  if (!T || !D || !R || D <= 0) { alert('Invalid values.'); return; }
+  const T = parseFloat(document.getElementById('eT_' + id).value) || 0;
+  const D = parseFloat(document.getElementById('eD_' + id).value) || 0;
+  const R = parseFloat(document.getElementById('eR_' + id).value) || 0;
+  if (T < 0 || D < 0 || R < 0) { alert('Values cannot be negative.'); return; }
   Object.assign(l, { name, T, D, R });
   editingId = null; persist(); render();
 }
@@ -528,12 +550,13 @@ function render() {
 
 function renderHero() {
   const el = document.getElementById('heroRow');
-  if (!loops.length) { el.style.display = 'none'; return; }
-  const all = loops.map(l => ({ ...l, ...calc(l) }));
-  const totT = all.reduce((s, l) => s + l.T, 0);
-  const totA = all.reduce((s, l) => s + l.annualProfit, 0);
+  // Drafts (loops without numbers) don't contribute to hero totals.
+  const active = loops.filter(l => !isDraft(l)).map(l => ({ ...l, ...calc(l) }));
+  if (!active.length) { el.style.display = 'none'; return; }
+  const totT = active.reduce((s, l) => s + l.T, 0);
+  const totA = active.reduce((s, l) => s + l.annualProfit, 0);
   const totM = totA / 12;
-  const best = all.reduce((b, l) => l.annualROI > b.annualROI ? l : b, all[0]);
+  const best = active.reduce((b, l) => l.annualROI > b.annualROI ? l : b, active[0]);
   el.style.display = 'grid';
   el.innerHTML =
     '<div class="hero-card hero-card-wide">' +
@@ -559,8 +582,16 @@ function renderLoops() {
     el.innerHTML = '<div class="empty"><div class="empty-icon">📊</div>No loops yet' + (isEditMode() ? ' — add one above' : '') + '</div>';
     return;
   }
-  const sorted = [...loops].map(l => ({ ...l, ...calc(l) })).sort((a, b) => b.annualROI - a.annualROI);
+  // Active loops sorted by ROI desc; drafts pinned to the bottom in creation order.
+  const sorted = [...loops]
+    .map(l => ({ ...l, ...calc(l), draft: isDraft(l) }))
+    .sort((a, b) => {
+      if (a.draft !== b.draft) return a.draft ? 1 : -1;
+      if (a.draft) return a.id - b.id;
+      return b.annualROI - a.annualROI;
+    });
   const editing = isEditMode();
+  const dash = '<span class="dash">—</span>';
   const hdr = '<thead><tr>' +
     '<th>Loop</th>' +
     '<th class="right">Throughput</th>' +
@@ -589,11 +620,15 @@ function renderLoops() {
         '<td><div class="row-actions"><button class="primary small" onclick="saveEdit(' + l.id + ')">Save</button><button class="ghost small" onclick="cancelEdit()">✕</button></div></td>' +
       '</tr>';
     }
-    return '<tr>' +
-      '<td><div class="loop-name"><span class="loop-dot" style="background:' + c + ';"></span>' + l.name + '</div></td>' +
-      '<td class="num">' + fmt$(l.T) + '</td>' +
-      '<td class="num">' + l.D + 'd</td>' +
-      '<td class="num">' + l.R + '%</td>' +
+    const tCell = l.draft ? dash : fmt$(l.T);
+    const dCell = l.draft ? dash : (l.D + 'd');
+    const rCell = l.draft ? dash : (l.R + '%');
+    const badge = l.draft ? '<span class="draft-badge">draft</span>' : '';
+    return '<tr' + (l.draft ? ' class="draft-row"' : '') + '>' +
+      '<td><div class="loop-name"><span class="loop-dot" style="background:' + c + ';"></span>' + l.name + badge + '</div></td>' +
+      '<td class="num">' + tCell + '</td>' +
+      '<td class="num">' + dCell + '</td>' +
+      '<td class="num">' + rCell + '</td>' +
       '<td class="profit-strong">' + fmt$(l.profitPerCycle) + '</td>' +
       '<td class="num">' + fmtC(l.cyclesPerYear) + '</td>' +
       '<td class="profit-strong">' + fmt$(l.monthlyProfit) + '</td>' +
@@ -607,14 +642,16 @@ function renderLoops() {
 
 function renderCharts() {
   const sec = document.getElementById('chartsSection');
-  if (!loops.length) {
+  // Drafts have no metrics — exclude from charts.
+  const active = loops.filter(l => !isDraft(l));
+  if (!active.length) {
     sec.style.display = 'none';
     if (chartROI) { chartROI.destroy(); chartROI = null; }
     if (chartMonthly) { chartMonthly.destroy(); chartMonthly = null; }
     return;
   }
   sec.style.display = '';
-  const sorted = [...loops].map(l => ({ ...l, ...calc(l) })).sort((a, b) => b.annualROI - a.annualROI);
+  const sorted = active.map(l => ({ ...l, ...calc(l) })).sort((a, b) => b.annualROI - a.annualROI);
   const labels = sorted.map(l => l.name);
   const rois = sorted.map(l => parseFloat(l.annualROI.toFixed(1)));
   const monthly = sorted.map(l => Math.round(l.monthlyProfit));
