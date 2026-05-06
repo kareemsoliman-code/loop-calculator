@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Loop Value Calculator</title>
+<script src="https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  :root {
+    --bg: #ffffff; --bg2: #f5f5f3; --bg3: #eeede8;
+    --text: #1a1a1a; --text2: #666; --text3: #999;
+    --border: rgba(0,0,0,0.12); --border2: rgba(0,0,0,0.2);
+    --green: #1D9E75; --danger: #E24B4A; --radius: 10px; --radius-sm: 7px;
+    --mono: 'Courier New', monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1c1c1c; --bg2: #252525; --bg3: #2e2e2e;
+      --text: #f0f0f0; --text2: #aaa; --text3: #666;
+      --border: rgba(255,255,255,0.1); --border2: rgba(255,255,255,0.2);
+    }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg3); color: var(--text); min-height: 100vh; }
+  .shell { max-width: 900px; margin: 0 auto; padding: 2rem 1rem; }
+  .header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 10px; }
+  .header-left .eyebrow { font-size: 11px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.09em; margin-bottom: 4px; }
+  .header-left h1 { font-size: 24px; font-weight: 600; }
+  button { cursor: pointer; font-size: 13px; padding: 6px 14px; border-radius: var(--radius-sm); border: 0.5px solid var(--border2); background: var(--bg); color: var(--text); transition: background 0.15s; }
+  button:hover { background: var(--bg2); }
+  input[type=text], input[type=number] { font-size: 13px; padding: 7px 10px; border-radius: var(--radius-sm); border: 0.5px solid var(--border2); background: var(--bg); color: var(--text); width: 100%; }
+  input[type=range] { width: 100%; accent-color: var(--green); }
+  .card { background: var(--bg); border: 0.5px solid var(--border); border-radius: var(--radius); padding: 1.25rem; }
+  .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 1.5rem; }
+  .metric { background: var(--bg2); border-radius: var(--radius-sm); padding: 1rem; }
+  .metric-label { font-size: 12px; color: var(--text2); margin-bottom: 4px; }
+  .metric-val { font-size: 20px; font-weight: 600; font-family: var(--mono); }
+  .metric-sub { font-size: 11px; color: var(--text3); margin-top: 2px; }
+  .section-label { font-size: 11px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.09em; margin-bottom: 10px; }
+  table { width: 100%; border-collapse: collapse; }
+  th { font-size: 11px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.07em; padding: 8px 6px; font-weight: 400; }
+  .td { padding: 10px 6px; font-size: 13px; border-top: 0.5px solid var(--border); vertical-align: middle; }
+  .td-r { padding: 10px 6px; font-size: 13px; font-family: var(--mono); text-align: right; border-top: 0.5px solid var(--border); vertical-align: middle; }
+  .stress-td { padding: 8px 6px; font-size: 12px; font-family: var(--mono); text-align: right; border-top: 0.5px solid var(--border); }
+  .stress-td-l { padding: 8px 6px; font-size: 12px; text-align: left; border-top: 0.5px solid var(--border); }
+  .charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1.5rem; }
+  .legend { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 8px; font-size: 11px; color: var(--text2); }
+  .legend-dot { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
+  .overflow { overflow-x: auto; border: 0.5px solid var(--border); border-radius: var(--radius); }
+  .add-form { background: var(--bg2); border: 0.5px solid var(--border); border-radius: var(--radius); padding: 1.25rem; margin-bottom: 1.5rem; display: none; }
+  .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-bottom: 12px; }
+  .form-label { font-size: 11px; color: var(--text2); display: block; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.06em; }
+  .form-err { font-size: 12px; color: var(--danger); margin-top: 8px; display: none; }
+  .edit-row td { background: var(--bg2); }
+  .inline-input { font-size: 12px; padding: 4px 6px; }
+  .green { color: var(--green); }
+  .red { color: var(--danger); }
+  .empty { text-align: center; padding: 3rem 0; color: var(--text3); font-size: 14px; }
+  @media (max-width: 600px) { .charts-grid { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <div class="header">
+    <div class="header-left">
+      <div class="eyebrow">shared · live</div>
+      <h1>Loop Value Calculator</h1>
+    </div>
+    <button onclick="toggleForm()">+ Add loop</button>
+  </div>
+
+  <div class="add-form" id="addForm">
+    <div style="font-size:14px;font-weight:600;margin-bottom:12px;">New loop</div>
+    <div class="form-grid">
+      <div><label class="form-label">Name</label><input type="text" id="fName" placeholder="Gold arb" /></div>
+      <div><label class="form-label">Throughput ($)</label><input type="number" id="fT" placeholder="10000" min="0" /></div>
+      <div><label class="form-label">Duration (days)</label><input type="number" id="fD" placeholder="14" min="1" /></div>
+      <div><label class="form-label">ROI / cycle (%)</label><input type="number" id="fR" placeholder="4.0" step="0.01" min="0" /></div>
+      <div><label class="form-label">Probability (%)</label><input type="number" id="fP" placeholder="85" min="0" max="100" /></div>
+    </div>
+    <div style="display:flex;gap:8px;">
+      <button onclick="saveLoop()">Save</button>
+      <button onclick="cancelForm()">Cancel</button>
+    </div>
+    <div class="form-err" id="formErr"></div>
+  </div>
+
+  <div class="summary-grid" id="summaryRow" style="display:none;"></div>
+  <div id="loopsContainer"><div class="empty">No loops yet — add one above</div></div>
+
+  <div id="sensitivitySection" style="display:none;margin-top:1.75rem;">
+    <div class="section-label">Probability stress test</div>
+    <div class="card">
+      <div style="display:flex;align-items:center;gap:14px;margin-bottom:1rem;flex-wrap:wrap;">
+        <span style="font-size:13px;color:var(--text2);white-space:nowrap;">What if probability were</span>
+        <input type="range" id="stressSlider" min="5" max="100" step="5" value="100" oninput="onStress()" style="flex:1;min-width:120px;" />
+        <span id="stressLabel" style="font-size:16px;font-weight:600;font-family:var(--mono);min-width:42px;text-align:right;">100%</span>
+        <span style="font-size:13px;color:var(--text2);">for all loops?</span>
+      </div>
+      <div class="overflow"><table id="stressTable"></table></div>
+    </div>
+  </div>
+
+  <div class="charts-grid" id="chartsSection" style="display:none;">
+    <div>
+      <div class="section-label">Annualized ROI</div>
+      <div class="legend" id="legendROI"></div>
+      <div id="wrapROI" style="position:relative;width:100%;"><canvas id="chartROI" role="img" aria-label="Annualized ROI by loop"></canvas></div>
+    </div>
+    <div>
+      <div class="section-label">Annual profit</div>
+      <div class="legend" id="legendProfit"></div>
+      <div id="wrapProfit" style="position:relative;width:100%;"><canvas id="chartProfit" role="img" aria-label="Annual profit by loop"></canvas></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const STORAGE_KEY = 'loop-calc-v1';
+const COLORS = ['#1D9E75','#3266ad','#D85A30','#BA7517','#D4537E','#7F77DD','#639922','#E24B4A'];
+let loops = [], editingId = null, chartROI = null, chartProfit = null, stressP = 100;
+
+function calc(l, overrideP) {
+  const P = overrideP !== undefined ? overrideP : l.P;
+  const cy = 365 / l.D;
+  const ppc = l.T * (l.R / 100) * (P / 100);
+  return { cyclesPerYear: cy, profitPerCycle: ppc, annualProfit: ppc * cy, annualROI: (l.R/100)*(P/100)*cy*100 };
+}
+function colorFor(l) { return COLORS[loops.findIndex(x=>x.id===l.id) % COLORS.length]; }
+function fmt$(n) { return '$' + Math.round(n).toLocaleString(); }
+function fmtR(n) { return n.toFixed(1) + '%'; }
+function fmtC(n) { return n.toFixed(1) + '×'; }
+function delta(base, stress) {
+  const d = stress - base, s = d >= 0 ? '+' : '';
+  return `<span class="${d>=0?'green':'red'}">${s}${fmt$(d)}</span>`;
+}
+
+function load() {
+  try { loops = JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; } catch(e) { loops = []; }
+  render();
+}
+function persist() { localStorage.setItem(STORAGE_KEY, JSON.stringify(loops)); }
+
+function toggleForm() { const f=document.getElementById('addForm'); f.style.display=f.style.display==='none'?'block':'none'; }
+function cancelForm() { document.getElementById('addForm').style.display='none'; clearForm(); }
+function clearForm() { ['fName','fT','fD','fR','fP'].forEach(id=>document.getElementById(id).value=''); document.getElementById('formErr').style.display='none'; }
+function showErr(msg) { const e=document.getElementById('formErr'); e.textContent=msg; e.style.display='block'; }
+
+function saveLoop() {
+  const name=document.getElementById('fName').value.trim()||('Loop '+(loops.length+1));
+  const T=parseFloat(document.getElementById('fT').value), D=parseFloat(document.getElementById('fD').value);
+  const R=parseFloat(document.getElementById('fR').value), P=parseFloat(document.getElementById('fP').value);
+  if(!T||!D||!R||isNaN(P)){showErr('Fill all numeric fields.');return;}
+  if(D<=0){showErr('Duration must be > 0.');return;}
+  if(P<0||P>100){showErr('Probability 0–100.');return;}
+  loops.push({id:Date.now(),name,T,D,R,P}); persist(); cancelForm(); render();
+}
+function startEdit(id){editingId=id;renderLoops();}
+function cancelEdit(){editingId=null;renderLoops();}
+function saveEdit(id){
+  const l=loops.find(x=>x.id===id); if(!l)return;
+  const name=document.getElementById('eN_'+id).value.trim()||l.name;
+  const T=parseFloat(document.getElementById('eT_'+id).value), D=parseFloat(document.getElementById('eD_'+id).value);
+  const R=parseFloat(document.getElementById('eR_'+id).value), P=parseFloat(document.getElementById('eP_'+id).value);
+  if(!T||!D||!R||isNaN(P)||D<=0||P<0||P>100){alert('Invalid values.');return;}
+  Object.assign(l,{name,T,D,R,P}); editingId=null; persist(); render();
+}
+function deleteLoop(id){loops=loops.filter(l=>l.id!==id);persist();render();}
+function onStress(){stressP=parseInt(document.getElementById('stressSlider').value);document.getElementById('stressLabel').textContent=stressP+'%';renderStress();}
+
+function render(){renderSummary();renderLoops();renderStress();renderCharts();}
+
+function renderSummary(){
+  const el=document.getElementById('summaryRow');
+  if(!loops.length){el.style.display='none';return;}
+  const all=loops.map(l=>({...l,...calc(l)}));
+  const totK=all.reduce((s,l)=>s+l.T,0), totA=all.reduce((s,l)=>s+l.annualProfit,0);
+  const best=all.reduce((b,l)=>l.annualROI>b.annualROI?l:b,all[0]);
+  el.style.display='grid';
+  el.innerHTML=`
+    <div class="metric"><div class="metric-label">Total throughput</div><div class="metric-val">${fmt$(totK)}</div></div>
+    <div class="metric"><div class="metric-label">Combined annual profit</div><div class="metric-val">${fmt$(totA)}</div></div>
+    <div class="metric"><div class="metric-label">Active loops</div><div class="metric-val">${loops.length}</div></div>
+    <div class="metric"><div class="metric-label">Top ROI</div><div class="metric-val">${fmtR(best.annualROI)}</div><div class="metric-sub">${best.name}</div></div>`;
+}
+
+function renderLoops(){
+  const el=document.getElementById('loopsContainer');
+  if(!loops.length){el.innerHTML='<div class="empty">No loops yet — add one above</div>';return;}
+  const sorted=[...loops].map(l=>({...l,...calc(l)})).sort((a,b)=>b.annualROI-a.annualROI);
+  const hdr=`<thead><tr>
+    <th style="text-align:left;">Loop</th><th style="text-align:right;">Throughput</th><th style="text-align:right;">Days</th>
+    <th style="text-align:right;">ROI/cycle</th><th style="text-align:right;">Prob.</th><th style="text-align:right;">Profit/cycle</th>
+    <th style="text-align:right;">Cycles/yr</th><th style="text-align:right;">Ann. profit</th><th style="text-align:right;">Ann. ROI</th><th></th>
+  </tr></thead>`;
+  const rows=sorted.map(l=>{
+    const c=colorFor(l), dot=`<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${c};margin-right:8px;vertical-align:middle;"></span>`;
+    if(editingId===l.id) return `<tr class="edit-row">
+      <td class="td"><input id="eN_${l.id}" class="inline-input" value="${l.name}" style="width:85px;" /></td>
+      <td class="td-r"><input id="eT_${l.id}" class="inline-input" type="number" value="${l.T}" style="width:75px;" /></td>
+      <td class="td-r"><input id="eD_${l.id}" class="inline-input" type="number" value="${l.D}" style="width:50px;" /></td>
+      <td class="td-r"><input id="eR_${l.id}" class="inline-input" type="number" step="0.01" value="${l.R}" style="width:50px;" /></td>
+      <td class="td-r"><input id="eP_${l.id}" class="inline-input" type="number" value="${l.P}" style="width:50px;" /></td>
+      <td class="td-r green">${fmt$(l.profitPerCycle)}</td>
+      <td class="td-r">${fmtC(l.cyclesPerYear)}</td>
+      <td class="td-r green" style="font-weight:600;">${fmt$(l.annualProfit)}</td>
+      <td class="td-r" style="font-weight:600;">${fmtR(l.annualROI)}</td>
+      <td class="td" style="white-space:nowrap;">
+        <button onclick="saveEdit(${l.id})" style="margin-right:4px;">Save</button>
+        <button onclick="cancelEdit()">✕</button>
+      </td></tr>`;
+    return `<tr>
+      <td class="td">${dot}<span style="font-weight:500;">${l.name}</span></td>
+      <td class="td-r">${fmt$(l.T)}</td><td class="td-r">${l.D}</td><td class="td-r">${l.R}%</td><td class="td-r">${l.P}%</td>
+      <td class="td-r green">${fmt$(l.profitPerCycle)}</td>
+      <td class="td-r">${fmtC(l.cyclesPerYear)}</td>
+      <td class="td-r green" style="font-weight:600;">${fmt$(l.annualProfit)}</td>
+      <td class="td-r" style="font-weight:600;">${fmtR(l.annualROI)}</td>
+      <td class="td" style="white-space:nowrap;">
+        <button onclick="startEdit(${l.id})" style="margin-right:4px;">Edit</button>
+        <button onclick="deleteLoop(${l.id})" style="color:var(--danger);">✕</button>
+      </td></tr>`;
+  }).join('');
+  el.innerHTML=`<div class="overflow"><table style="min-width:700px;">${hdr}<tbody>${rows}</tbody></table></div>`;
+}
+
+function renderStress(){
+  const sec=document.getElementById('sensitivitySection');
+  if(!loops.length){sec.style.display='none';return;}
+  sec.style.display='block';
+  const sorted=[...loops].map(l=>({...l,base:calc(l),stressed:calc(l,stressP)})).sort((a,b)=>b.base.annualROI-a.base.annualROI);
+  const hdr=`<thead><tr>
+    <th style="text-align:left;">Loop</th><th style="text-align:right;">Base prob.</th><th style="text-align:right;">Scenario prob.</th>
+    <th style="text-align:right;">Base profit/yr</th><th style="text-align:right;">Scenario profit/yr</th>
+    <th style="text-align:right;">Change</th><th style="text-align:right;">Base ROI</th><th style="text-align:right;">Scenario ROI</th>
+  </tr></thead>`;
+  const rows=sorted.map(l=>{
+    const pc=stressP<l.P?'red':stressP>l.P?'green':'';
+    return `<tr>
+      <td class="stress-td-l" style="font-weight:500;"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${colorFor(l)};margin-right:7px;vertical-align:middle;"></span>${l.name}</td>
+      <td class="stress-td">${l.P}%</td>
+      <td class="stress-td ${pc}">${stressP}%</td>
+      <td class="stress-td">${fmt$(l.base.annualProfit)}</td>
+      <td class="stress-td ${pc}">${fmt$(l.stressed.annualProfit)}</td>
+      <td class="stress-td">${delta(l.base.annualProfit,l.stressed.annualProfit)}</td>
+      <td class="stress-td">${fmtR(l.base.annualROI)}</td>
+      <td class="stress-td ${pc}">${fmtR(l.stressed.annualROI)}</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('stressTable').innerHTML=`${hdr}<tbody>${rows}</tbody>`;
+}
+
+function renderCharts(){
+  const sec=document.getElementById('chartsSection');
+  if(!loops.length){sec.style.display='none';if(chartROI){chartROI.destroy();chartROI=null;}if(chartProfit){chartProfit.destroy();chartProfit=null;}return;}
+  sec.style.display='grid';
+  const sorted=[...loops].map(l=>({...l,...calc(l)})).sort((a,b)=>b.annualROI-a.annualROI);
+  const labels=sorted.map(l=>l.name), rois=sorted.map(l=>parseFloat(l.annualROI.toFixed(1)));
+  const profits=sorted.map(l=>Math.round(l.annualProfit)), colors=sorted.map(l=>colorFor(l));
+  const h=Math.max(180,sorted.length*44+60);
+  document.getElementById('wrapROI').style.height=h+'px';
+  document.getElementById('wrapProfit').style.height=h+'px';
+  document.getElementById('legendROI').innerHTML=sorted.map((l,i)=>`<span style="display:flex;align-items:center;gap:4px;"><span class="legend-dot" style="background:${colors[i]};"></span>${l.name} ${fmtR(rois[i])}</span>`).join('');
+  document.getElementById('legendProfit').innerHTML=sorted.map((l,i)=>`<span style="display:flex;align-items:center;gap:4px;"><span class="legend-dot" style="background:${colors[i]};"></span>${l.name} ${fmt$(profits[i])}</span>`).join('');
+  const common={responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}}};
+  if(chartROI)chartROI.destroy();
+  chartROI=new Chart(document.getElementById('chartROI'),{type:'bar',data:{labels,datasets:[{data:rois,backgroundColor:colors,borderRadius:4}]},options:{...common,indexAxis:'y',scales:{x:{beginAtZero:true,ticks:{callback:v=>v+'%',font:{size:10}},grid:{color:'rgba(128,128,128,0.1)'}},y:{ticks:{font:{size:11}},grid:{display:false}}},plugins:{...common.plugins,tooltip:{callbacks:{label:ctx=>' '+ctx.raw.toFixed(1)+'%'}}}}});
+  if(chartProfit)chartProfit.destroy();
+  chartProfit=new Chart(document.getElementById('chartProfit'),{type:'bar',data:{labels,datasets:[{data:profits,backgroundColor:colors,borderRadius:4}]},options:{...common,indexAxis:'y',scales:{x:{beginAtZero:true,ticks:{callback:v=>'$'+(v>=1000?(v/1000).toFixed(0)+'k':v),font:{size:10}},grid:{color:'rgba(128,128,128,0.1)'}},y:{ticks:{font:{size:11}},grid:{display:false}}},plugins:{...common.plugins,tooltip:{callbacks:{label:ctx=>' $'+ctx.raw.toLocaleString()}}}}});
+}
+
+load();
+</script>
+</body>
+</html>
