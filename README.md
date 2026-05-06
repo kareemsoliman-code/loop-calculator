@@ -2,8 +2,8 @@
 
 A self-contained HTML calculator for evaluating capital-deployment "loops" by throughput, duration, ROI per cycle, and probability of success. It computes annualized profit and ROI, lets you stress-test the probability assumption, and is wrapped in a Telegram bot that launches it as a Web App from a chat or channel.
 
-- **Live calculator (GitHub Pages):** `https://<your-github-username>.github.io/loop-calculator/`
-- **Bot:** `@<your-bot-username>` (set via BotFather)
+- **Live calculator (GitHub Pages):** https://kareemsoliman-code.github.io/loop-calculator/
+- **Bot:** [@Loopcalc_bot](https://t.me/Loopcalc_bot)
 
 The HTML page is fully client-side and stores loops in `localStorage`. There is no backend.
 
@@ -28,10 +28,10 @@ The HTML page is fully client-side and stores loops in `localStorage`. There is 
 You need Node.js 18 or newer.
 
 ```bash
-git clone https://github.com/<your-username>/loop-calculator.git
+git clone https://github.com/kareemsoliman-code/loop-calculator.git
 cd loop-calculator
 cp .env.example .env
-# edit .env and fill in BOT_TOKEN and WEB_APP_URL
+# edit .env and fill in BOT_TOKEN and WEB_APP_URL=https://kareemsoliman-code.github.io/loop-calculator/
 npm install
 npm start
 ```
