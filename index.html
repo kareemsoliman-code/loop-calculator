@@ -3,7 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="robots" content="noindex,nofollow" />
 <title>Loop Value Calculator</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <style>
@@ -23,6 +25,13 @@
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg3); color: var(--text); min-height: 100vh; }
+  body.gating { visibility: hidden; }
+  .gate-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 2rem; }
+  .gate-card { max-width: 420px; text-align: center; }
+  .gate-card h1 { font-size: 20px; font-weight: 600; margin-bottom: 8px; }
+  .gate-card p { color: var(--text2); font-size: 14px; line-height: 1.5; margin-bottom: 1.5rem; }
+  .gate-card .icon { font-size: 48px; margin-bottom: 1rem; }
+  .gate-card a { display: inline-block; background: var(--green); color: #fff; text-decoration: none; padding: 10px 20px; border-radius: var(--radius-sm); font-size: 14px; font-weight: 500; }
   .shell { max-width: 900px; margin: 0 auto; padding: 2rem 1rem; }
   .header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 10px; }
   .header-left .eyebrow { font-size: 11px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.09em; margin-bottom: 4px; }
@@ -60,7 +69,7 @@
   @media (max-width: 600px) { .charts-grid { grid-template-columns: 1fr; } }
 </style>
 </head>
-<body>
+<body class="gating">
 <div class="shell">
 
   <div class="header">
@@ -366,7 +375,28 @@ function renderCharts(){
   chartProfit=new Chart(document.getElementById('chartProfit'),{type:'bar',data:{labels,datasets:[{data:profits,backgroundColor:colors,borderRadius:4}]},options:{...common,indexAxis:'y',scales:{x:{beginAtZero:true,ticks:{callback:v=>'$'+(v>=1000?(v/1000).toFixed(0)+'k':v),font:{size:10}},grid:{color:'rgba(128,128,128,0.1)'}},y:{ticks:{font:{size:11}},grid:{display:false}}},plugins:{...common.plugins,tooltip:{callbacks:{label:ctx=>' $'+ctx.raw.toLocaleString()}}}}});
 }
 
-load();
+// Members-only gate. Deterrent only — bypassable by anyone with browser devtools.
+// See README. The gist ID is in this page's source either way; treat data as
+// "obscure" not "secret."
+(function gate() {
+  const tg = window.Telegram && window.Telegram.WebApp;
+  document.body.classList.remove('gating');
+  if (tg && tg.initData) {
+    if (tg.expand) tg.expand();
+    if (tg.ready) tg.ready();
+    load();
+    return;
+  }
+  document.body.innerHTML = `
+    <div class="gate-wrap">
+      <div class="gate-card">
+        <div class="icon">🔒</div>
+        <h1>Members only</h1>
+        <p>The Loop Value Calculator is available to members of our Telegram group. Open it from inside Telegram.</p>
+        <a href="https://t.me/Loopcalc_bot">Open in Telegram</a>
+      </div>
+    </div>`;
+})();
 </script>
 </body>
 </html>

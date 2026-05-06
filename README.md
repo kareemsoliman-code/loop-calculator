@@ -20,6 +20,17 @@ Click **🔓 Exit edit** to clear the token from your device.
 
 > **Note:** The gist is owned by **kareemsoliman-code**, so only that account's PAT can write. Other accounts' tokens will be rejected. To allow multi-writer setups you'd need a small backend (Supabase, Firebase, Cloudflare Worker, etc.).
 
+## "Members only" gate (deterrent, not auth)
+
+The page checks `window.Telegram.WebApp.initData` on load. If absent, the calculator is replaced with a "Members only" page linking to the bot. A `noindex` meta and `robots.txt` keep search engines out.
+
+**This is not real authentication.** A determined visitor can:
+
+- bypass the gate from devtools (`window.Telegram = {WebApp:{initData:'x'}}` then re-run the gate),
+- read the gist ID from `view-source:` and fetch the data directly from `api.github.com`.
+
+For real Telegram-group-membership auth, you'd need a server-side check (e.g. a Cloudflare Worker that verifies `initData`'s HMAC against the bot token and calls `getChatMember`).
+
 ---
 
 ## Repo layout
