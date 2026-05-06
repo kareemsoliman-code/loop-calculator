@@ -5,7 +5,20 @@ A self-contained HTML calculator for evaluating capital-deployment "loops" by th
 - **Live calculator (GitHub Pages):** https://kareemsoliman-code.github.io/loop-calculator/
 - **Bot:** [@Loopcalc_bot](https://t.me/Loopcalc_bot)
 
-The HTML page is fully client-side and stores loops in `localStorage`. There is no backend.
+The HTML page is fully client-side. Loops are stored in a **secret GitHub Gist** so all viewers see the same data; a small `localStorage` cache enables instant render and offline fallback.
+
+## Editing the shared data
+
+Anyone opening the calculator sees the latest data **read-only**. To edit:
+
+1. Click **🔒 Edit mode** in the header.
+2. Paste a GitHub PAT with `gist` scope (create one [here](https://github.com/settings/tokens/new?scopes=gist&description=loop-calc)).
+3. The token is stored only in your browser's `localStorage` — it never appears in the page source, never goes to GitHub Pages, and is sent only to `api.github.com` over HTTPS.
+4. Add/edit/delete loops; each change PATCHes the gist. Other viewers see the update on their next reload.
+
+Click **🔓 Exit edit** to clear the token from your device.
+
+> **Note:** The gist is owned by **kareemsoliman-code**, so only that account's PAT can write. Other accounts' tokens will be rejected. To allow multi-writer setups you'd need a small backend (Supabase, Firebase, Cloudflare Worker, etc.).
 
 ---
 

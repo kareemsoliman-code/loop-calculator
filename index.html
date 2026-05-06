@@ -65,10 +65,13 @@
 
   <div class="header">
     <div class="header-left">
-      <div class="eyebrow">shared · live</div>
+      <div class="eyebrow"><span id="syncStatus">Loading…</span></div>
       <h1>Loop Value Calculator</h1>
     </div>
-    <button onclick="toggleForm()">+ Add loop</button>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <button id="addBtn" onclick="toggleForm()" style="display:none;">+ Add loop</button>
+      <button id="editBtn" onclick="toggleEditMode()">🔒 Edit mode</button>
+    </div>
   </div>
 
   <div class="add-form" id="addForm">
@@ -119,9 +122,54 @@
 </div>
 
 <script>
-const STORAGE_KEY = 'loop-calc-v1';
+const GIST_ID = 'c60f30cca81747d044b3cc40a8de694b';
+const GIST_FILE = 'loops.json';
+const TOKEN_KEY = 'loop-calc-token';
+const CACHE_KEY = 'loop-calc-v1';
 const COLORS = ['#1D9E75','#3266ad','#D85A30','#BA7517','#D4537E','#7F77DD','#639922','#E24B4A'];
 let loops = [], editingId = null, chartROI = null, chartProfit = null, stressP = 100;
+
+function isEditMode() { return !!localStorage.getItem(TOKEN_KEY); }
+
+function setStatus(s, msg) {
+  const el = document.getElementById('syncStatus');
+  if (!el) return;
+  const map = {
+    loading:    ['Loading from cloud…',                  'var(--text3)'],
+    synced:     ['● Synced · read-only',                  'var(--green)'],
+    editsynced: ['● Synced · edit mode',                  'var(--green)'],
+    syncing:    ['● Syncing…',                            '#BA7517'],
+    error:      ['● Sync error: ' + (msg || ''),          'var(--danger)'],
+    offline:    ['● Offline (using cached copy)',         'var(--danger)']
+  };
+  const v = map[s] || map.synced;
+  el.textContent = v[0];
+  el.style.color = v[1];
+}
+
+function applyMode() {
+  const editing = isEditMode();
+  document.getElementById('addBtn').style.display = editing ? '' : 'none';
+  document.getElementById('editBtn').textContent = editing ? '🔓 Exit edit' : '🔒 Edit mode';
+  renderLoops();
+}
+
+function toggleEditMode() {
+  if (isEditMode()) {
+    if (confirm('Exit edit mode? The token will be removed from this device.')) {
+      localStorage.removeItem(TOKEN_KEY);
+      setStatus('synced');
+      applyMode();
+    }
+    return;
+  }
+  const url = 'https://github.com/settings/tokens/new?scopes=gist&description=loop-calc';
+  const t = prompt('Paste a GitHub PAT with `gist` scope.\n\nStored only in this browser. Sent only to api.github.com.\n\nCreate one here:\n' + url);
+  if (!t) return;
+  localStorage.setItem(TOKEN_KEY, t.trim());
+  applyMode();
+  persist(); // immediate test write
+}
 
 function calc(l, overrideP) {
   const P = overrideP !== undefined ? overrideP : l.P;
@@ -138,11 +186,57 @@ function delta(base, stress) {
   return `<span class="${d>=0?'green':'red'}">${s}${fmt$(d)}</span>`;
 }
 
-function load() {
-  try { loops = JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; } catch(e) { loops = []; }
+async function load() {
+  try { loops = JSON.parse(localStorage.getItem(CACHE_KEY)) || []; } catch(e) { loops = []; }
+  setStatus('loading');
   render();
+  applyMode();
+  try {
+    const r = await fetch(`https://api.github.com/gists/${GIST_ID}`, {
+      cache: 'no-store',
+      headers: { 'Accept': 'application/vnd.github+json' }
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const j = await r.json();
+    const c = j.files && j.files[GIST_FILE] && j.files[GIST_FILE].content;
+    loops = c ? JSON.parse(c) : [];
+    localStorage.setItem(CACHE_KEY, JSON.stringify(loops));
+    setStatus(isEditMode() ? 'editsynced' : 'synced');
+    render();
+  } catch (e) {
+    setStatus('offline', e.message);
+  }
 }
-function persist() { localStorage.setItem(STORAGE_KEY, JSON.stringify(loops)); }
+
+async function persist() {
+  localStorage.setItem(CACHE_KEY, JSON.stringify(loops));
+  if (!isEditMode()) return;
+  setStatus('syncing');
+  try {
+    const r = await fetch(`https://api.github.com/gists/${GIST_ID}`, {
+      method: 'PATCH',
+      headers: {
+        'Authorization': 'Bearer ' + localStorage.getItem(TOKEN_KEY),
+        'Accept': 'application/vnd.github+json',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ files: { [GIST_FILE]: { content: JSON.stringify(loops, null, 2) } } })
+    });
+    if (!r.ok) {
+      if (r.status === 401 || r.status === 403 || r.status === 404) {
+        localStorage.removeItem(TOKEN_KEY);
+        applyMode();
+        setStatus('error', 'token rejected (cleared)');
+      } else {
+        setStatus('error', 'HTTP ' + r.status);
+      }
+      return;
+    }
+    setStatus('editsynced');
+  } catch (e) {
+    setStatus('error', e.message);
+  }
+}
 
 function toggleForm() { const f=document.getElementById('addForm'); f.style.display=f.style.display==='none'?'block':'none'; }
 function cancelForm() { document.getElementById('addForm').style.display='none'; clearForm(); }
@@ -212,6 +306,9 @@ function renderLoops(){
         <button onclick="saveEdit(${l.id})" style="margin-right:4px;">Save</button>
         <button onclick="cancelEdit()">✕</button>
       </td></tr>`;
+    const actions = isEditMode()
+      ? `<button onclick="startEdit(${l.id})" style="margin-right:4px;">Edit</button><button onclick="deleteLoop(${l.id})" style="color:var(--danger);">✕</button>`
+      : '';
     return `<tr>
       <td class="td">${dot}<span style="font-weight:500;">${l.name}</span></td>
       <td class="td-r">${fmt$(l.T)}</td><td class="td-r">${l.D}</td><td class="td-r">${l.R}%</td><td class="td-r">${l.P}%</td>
@@ -219,10 +316,7 @@ function renderLoops(){
       <td class="td-r">${fmtC(l.cyclesPerYear)}</td>
       <td class="td-r green" style="font-weight:600;">${fmt$(l.annualProfit)}</td>
       <td class="td-r" style="font-weight:600;">${fmtR(l.annualROI)}</td>
-      <td class="td" style="white-space:nowrap;">
-        <button onclick="startEdit(${l.id})" style="margin-right:4px;">Edit</button>
-        <button onclick="deleteLoop(${l.id})" style="color:var(--danger);">✕</button>
-      </td></tr>`;
+      <td class="td" style="white-space:nowrap;">${actions}</td></tr>`;
   }).join('');
   el.innerHTML=`<div class="overflow"><table style="min-width:700px;">${hdr}<tbody>${rows}</tbody></table></div>`;
 }
